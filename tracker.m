@@ -37,7 +37,7 @@ function tracker(base_path, target, target_sz, ...
 
 %   window size, taking padding into account
 	% window_sz = floor(target_sz * (1 + padding));
-	window_sz = 100*100; % For now we use a fixed ROI
+	window_sz = [40 40]; % For now we use a fixed ROI
     
 % 	we could choose a size that is a power of two, for better FFT
 % 	%performance. in practice it is slower, due to the larger window size.
@@ -60,17 +60,23 @@ function tracker(base_path, target, target_sz, ...
 	time = 0;  %to calculate FPS
 
     frameCounter = 1;
-	for frame = frameIn:frameLast,
-		% load HSI Image - Handle - For now keep reading the same image
-        imgHandle = matfile([base_path 'Image_' num2str(1) '.mat']);
+	for frame = target.firstFrame:target.lastFrame,
+		% load HSI Image - Handle - For now keep reading the same imagOOooe
+        imgHandle = matfile([base_path 'Image_' num2str(frame) '.mat']);
+        
+        % Load GrayScale Imagery for Display Purposes
+        % grayImage = imgHandle.img(:,:,1);
         
 		tic();
         if frameCounter > 1
             
-            % Sample The ROI From the Full Image
-            hsi_roi = imgHandle.im(target.x-50:target.x+49,target.y-50:target.y+49,:);
-        
-            % Apply Homography to Warp to the Reference Frame
+            % Apply Homograpy to Previous Position
+            applyHomograpy(target,frameCounter-1);
+            
+            %Sample The ROI From the Full Image
+            hsi_roi = imgHandle.img(target.x-window_sz(1)/2:target.x+window_sz(2)/2-1,target.y-window_sz(1)/2:target.y+window_sz(1)/2-1,:);
+
+            %Apply Homography to Warp to the Reference Frame
             % target = applyHomograpy(target); % Ignore Homography for Now
             
             %obtain a subwindow for detection at the position from last
@@ -99,13 +105,13 @@ function tracker(base_path, target, target_sz, ...
             if horiz_delta > size(zf,2) / 2,  %same for horizontal axis
                 horiz_delta = horiz_delta - size(zf,2);
             end
-            target.x = target.x + cell_size * [vert_delta - 1, horiz_delta - 1];
-            target.y = target.y + cell_size * [vert_delta - 1, horiz_delta - 1];
+            target.x = target.x + cell_size * [vert_delta - 1];
+            target.y = target.y + cell_size * [horiz_delta - 1];
         end
         
         %obtain a subwindow for training at newly estimated target position
         % Sample The ROI From the Full Image
-        hsi_roi = imgHandle.im(target.x-50:target.x+49,target.y-50:target.y+49,:);
+        hsi_roi = imgHandle.img(target.x-window_sz(1)/2:target.x+window_sz(1)/2-1,target.y-window_sz(1)/2:target.y+window_sz(1)/2-1,:);
         xf = fft2(get_features(hsi_roi, features, cell_size, cos_window));
 
         %Kernel Ridge Regression, calculate alphas (in Fourier domain)
@@ -119,15 +125,20 @@ function tracker(base_path, target, target_sz, ...
         end
         alphaf = yf ./ (kf + lambda);   %equation for fast training
    
-		if frame == 1,  %first frame, train with a single image
+		if frameCounter == 1,  %first frame, train with a single image
 			model_alphaf = alphaf;
 			model_xf = xf;
 		 else
 			%subsequent frames, interpolate model
 			model_alphaf = (1 - interp_factor) * model_alphaf + interp_factor * alphaf;
 			model_xf = (1 - interp_factor) * model_xf + interp_factor * xf;
-		end
+        end
+        frameCounter = frameCounter + 1;
 
+        figure(1);
+        imshow(hsi_roi(:,:,1),[]);
+        % hold on
+        % plot(target.y,target.x,'go','Linewidth',3);
 		% save position and timing
 		toc();
 		

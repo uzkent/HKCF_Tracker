@@ -1,4 +1,4 @@
-function [data_Sfinal]=NoiseAdd_2(data,ml)
+function [data_Sfinal]=NoiseAdd(data,ml)
 %% THIS FUNCTION ADDS NOISE TO THE INPUT DATA CONSIDERING RITMOS
 % =========================================================================
 % Explanation:

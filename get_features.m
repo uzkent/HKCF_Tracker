@@ -27,9 +27,9 @@ function x = get_features(im, features, cell_size, cos_window)
     
     if features.hsi, % Proposed Tracker
 		%HSI Features, Convert to Reflectance and Add Noise
-        im = NoiseAdd(im);
+        im = NoiseAdd(im,0.7);
         % Subtract from the Mean for Better Discrimination
-        x = im - mean(im);
+        x = im - mean(mean(im));
     end
 	
 	%process with cosine window if needed

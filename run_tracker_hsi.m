@@ -1,4 +1,3 @@
-
 %
 %  High-Speed Tracking with Kernelized Correlation Filters
 %
@@ -36,12 +35,10 @@
 %  >> run_tracker choose linear gray   %MOSSE filter (single channel)
 %
 
-
-function run_tracker_hsi(kernel_type, feature_type)
+function run_tracker_hsi(kernel_type, feature_type,id)
 
 	%path to the videos (you'll be able to choose one with the GUI).
-% 	base_path = './data/Benchmark/';
-    base_path = '~/Desktop/HSI_Video/';
+    base_path = '/Volumes/Seagate Backup Plus Drive/Moving_Platform_HSI/';
 
 	%default settings
 	if nargin < 1, kernel_type = 'gaussian'; end
@@ -92,12 +89,21 @@ function run_tracker_hsi(kernel_type, feature_type)
     % -----------------------------------------------
     % Read the Ground Truth to Get Target Information - Read from Original
     % Text File to get Target Information
-    target.x = 100;
-    target.y = 100;
-    target.width = 20;
-    target.height = 10;
+    file = dlmread('/Volumes/Seagate Backup Plus Drive/Moving_Platform_HSI/Ground_Truth/Vehicles_of_Interest.txt');
+    target.id = file(id,1);
+    target.firstFrame = file(id,2)+1;
+    target.lastFrame = file(id,3);
+    target.x = file(id,4);
+    target.y = file(id,5);
+    target.width = file(id,6)*2;
+    target.height = file(id,7)*2;
     target_sz = target.width * target.height;
     % ----------------------------------------------
+    
+    % Read the Homography Matrix
+    target.H = [0.9994   -0.0107    8.1164;
+        0.0069    0.9996   -5.1500;
+        -0.0000   -0.0000    1.0000];
     
     % Call the tracker function with all the relevant parameters
     tracker(base_path, target, target_sz, ...
