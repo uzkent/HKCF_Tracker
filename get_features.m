@@ -17,7 +17,8 @@ function x = get_features(im, features, cell_size, cos_window)
 %   Joao F. Henriques, 2014
 %   http://www.isr.uc.pt/~henriques/
 
-	
+temp = load('w2crs');
+w2c = temp.w2crs;	
 	if features.gray,
 		%gray-level (scalar feature)
 		x = double(im) / 255;
@@ -27,9 +28,19 @@ function x = get_features(im, features, cell_size, cos_window)
     
     if features.hsi, % Proposed Tracker
 		%HSI Features, Convert to Reflectance and Add Noise
-        im = NoiseAdd(im,0.7);
+        im = NoiseAdd(im,0.9);
+        % im = 200 * im;
         % Subtract from the Mean for Better Discrimination
         x = im - mean(mean(im));
+        
+        %HOG features, from Piotr's Toolbox
+        im = sum(im(:,:,1:30),3);
+		xHoG = double(fhog(single(im) / 255, cell_size, 9));
+		xHoG(:,:,end) = [];  %remove all-zeros channel ("truncation feature")
+        %out_pca = reshape(temp_pca, [prod(sz), size(temp_pca, 3)]);
+		x = cat(3,x,xHoG);
+        %x = xHoG;
+        
     end
 	
 	%process with cosine window if needed

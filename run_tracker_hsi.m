@@ -51,10 +51,10 @@ function run_tracker_hsi(kernel_type, feature_type,id)
 	features.gray = false;
 	features.hog = false;
 	
-	padding = 5.0;  %extra area surrounding the target
+	padding = 2.0;  %extra area surrounding the target
 
 	lambda = 1e-4;  %regularization
-	output_sigma_factor = 0.1;  %spatial bandwidth (proportional to target)
+	output_sigma_factor = 0.10;  %spatial bandwidth (proportional to target)
 	
 	switch feature_type
     case 'gray',
@@ -69,8 +69,8 @@ function run_tracker_hsi(kernel_type, feature_type,id)
         cell_size = 1;
 
    case 'hsi'  % Proposed Tracker Features
-        interp_factor = 0.02;
-        kernel.sigma = 0.5;
+        interp_factor = 0.03;
+        kernel.sigma = 0.6;
 
         kernel.poly_a = 1;
         kernel.poly_b = 9;
@@ -97,7 +97,7 @@ function run_tracker_hsi(kernel_type, feature_type,id)
     target.y = file(id,5);
     target.width = file(id,6)*2;
     target.height = file(id,7)*2;
-    target_sz = target.width * target.height;
+    target_sz = [target.width target.height];
     % ----------------------------------------------
     
     % Read the Homography Matrix
