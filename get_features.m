@@ -34,12 +34,12 @@ w2c = temp.w2crs;
         x = im - mean(mean(im));
         
         %HOG features, from Piotr's Toolbox
-        im = sum(im(:,:,1:30),3);
-		xHoG = double(fhog(single(im) / 255, cell_size, 9));
-		xHoG(:,:,end) = [];  %remove all-zeros channel ("truncation feature")
-        %out_pca = reshape(temp_pca, [prod(sz), size(temp_pca, 3)]);
-		x = cat(3,x,xHoG);
-        %x = xHoG;
+        % im = sum(im(:,:,1:30),3);
+		% xHoG = double(fhog(single(im) / 255, cell_size, 9));
+		% xHoG(:,:,end) = [];  %remove all-zeros channel ("truncation feature")
+        % out_pca = reshape(temp_pca, [prod(sz), size(temp_pca, 3)]);
+		% x = cat(3,x,xHoG);
+        % x = xHoG;
         
     end
 	

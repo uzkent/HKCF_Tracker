@@ -35,7 +35,8 @@
 %  >> run_tracker choose linear gray   %MOSSE filter (single channel)
 %
 
-function run_tracker_hsi(kernel_type, feature_type,id)
+% function run_tracker_hsi(kernel_type, feature_type,id) %Run it for specific target
+function run_tracker_hsi(kernel_type, feature_type) %Run it for all the targets
 
 	%path to the videos (you'll be able to choose one with the GUI).
     base_path = '/Volumes/Seagate Backup Plus Drive/Moving_Platform_HSI/';
@@ -86,28 +87,46 @@ function run_tracker_hsi(kernel_type, feature_type,id)
     
 	assert(any(strcmp(kernel_type, {'linear', 'polynomial', 'gaussian'})), 'Unknown kernel.')
 
+    
     % -----------------------------------------------
     % Read the Ground Truth to Get Target Information - Read from Original
     % Text File to get Target Information
     file = dlmread('/Volumes/Seagate Backup Plus Drive/Moving_Platform_HSI/Ground_Truth/Vehicles_of_Interest.txt');
-    target.id = file(id,1);
-    target.firstFrame = file(id,2)+1;
-    target.lastFrame = file(id,3);
-    target.x = file(id,4);
-    target.y = file(id,5);
-    target.width = file(id,6)*2;
-    target.height = file(id,7)*2;
-    target_sz = [target.width target.height];
-    % ----------------------------------------------
-    
-    % Read the Homography Matrix
-    target.H = [0.9994   -0.0107    8.1164;
-        0.0069    0.9996   -5.1500;
-        -0.0000   -0.0000    1.0000];
-    
-    % Call the tracker function with all the relevant parameters
-    tracker(base_path, target, target_sz, ...
-        padding, kernel, lambda, output_sigma_factor, interp_factor, ...
-        cell_size, features);
-		
+    counter = 1;
+    for i = 1:size(file,1)
+        id = i;
+        target.id = file(id,1);
+        target.firstFrame = file(id,2)+1;
+        target.lastFrame = file(id,2)+25;
+        target.x = file(id,4);
+        target.y = file(id,5);
+        target.width = file(id,6)*2;
+        target.height = file(id,7)*2;
+        target_sz = [target.width target.height];
+        % ----------------------------------------------
+
+        % Read the Homography Matrix
+        target.H = [0.9994   -0.0107    8.1164;
+            0.0069    0.9996   -5.1500;
+            -0.0000   -0.0000    1.0000];
+
+        % Call the tracker function with all the relevant parameters
+        try
+            pr_curve(counter,:) = tracker(base_path, target, target_sz, ...
+                padding, kernel, lambda, output_sigma_factor, interp_factor, ...
+                cell_size, features);
+            counter = counter+1;
+        catch err;
+            continue;
+        end 
+        
+        %Plot the Figure
+        close all
+        pr = mean(pr_curve,1);
+        plot(pr(1:50),'Linewidth',4);
+        axis([0 50 0 1]);
+        xlabel('Distance');
+        ylabel('Precision');
+        pr(51);
+    end
 end

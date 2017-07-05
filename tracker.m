@@ -1,4 +1,4 @@
-function tracker(base_path, target, target_sz, ...
+function [pr_curve] = tracker(base_path, target, target_sz, ...
 	padding, kernel, lambda, output_sigma_factor, interp_factor, cell_size, ...
 	features)
 %TRACKER Kernelized/Dual Correlation Filter (KCF/DCF) tracking.
@@ -58,17 +58,13 @@ function tracker(base_path, target, target_sz, ...
 	%note: variables ending with 'f' are in the Fourier domain.
 
 	time = 0;  %to calculate FPS
-
-    %Read Ground Truth File of Vehicle of Interest
-    voiGT = dlmread(['/Volumes/Seagate Backup Plus Drive/Moving_Platform_HSI/Ground_Truth/Ground_Truth_Files/' num2str(target.id) '_track.txt']);
     
     frameCounter = 1;
 	for frame = target.firstFrame:target.lastFrame,
-		% load HSI Image - Handle - For now keep reading the same imagOOooe
+		%load HSI Image - Handle - For now keep reading the same imagOOooe
         imgHandle = matfile([base_path 'Image_' num2str(frame) '.mat']);
-        gtIndex = find(voiGT(:,1)==frame);
         
-        % Load GrayScale Imagery for Display Purposes
+        %Load GrayScale Imagery for Display Purposes
         % grayImage = imgHandle.img(:,:,1);
         
 		tic();
@@ -78,8 +74,8 @@ function tracker(base_path, target, target_sz, ...
             applyHomograpy(target,frameCounter-1);
             
             %Sample The ROI From the Full Image
-            xCoord = min(max(0,target.x-(window_sz(1)/2)*2),1500):min(max(0,target.x+(window_sz(1)/2)*2),1500);
-            yCoord = min(max(0,target.y-(window_sz(2)/2)*2),1500):min(max(0,target.y+(window_sz(2)/2)*2),1500);
+            xCoord = min(max(1,target.x-(window_sz(1)/2)*2),1500):min(max(1,target.x+(window_sz(1)/2)*2),1500);
+            yCoord = min(max(1,target.y-(window_sz(2)/2)*2),1500):min(max(1,target.y+(window_sz(2)/2)*2),1500);
             hsi_roi = imgHandle.img(xCoord,yCoord,:);
             
             SubWindowsX = round(linspace(1,size(xCoord,2)-window_sz(1),5));
@@ -137,7 +133,9 @@ function tracker(base_path, target, target_sz, ...
         
         %obtain a subwindow for training at newly estimated target position
         % Sample The ROI From the Full Image
-        hsi_roi = imgHandle.img(target.x-window_sz(1)/2:target.x+window_sz(1)/2-1,target.y-window_sz(2)/2:target.y+window_sz(2)/2-1,:);
+        xCoord = min(max(1,target.x-(window_sz(1)/2)),1500):min(max(1,target.x+(window_sz(1)/2)),1500)-1;
+        yCoord = min(max(1,target.y-(window_sz(2)/2)),1500):min(max(1,target.y+(window_sz(2)/2)),1500)-1;
+        hsi_roi = imgHandle.img(xCoord,yCoord,:);
         xf = fft2(get_features(hsi_roi, features, cell_size, cos_window));
 
         %Kernel Ridge Regression, calculate alphas (in Fourier domain)
@@ -159,16 +157,22 @@ function tracker(base_path, target, target_sz, ...
 			model_alphaf = (1 - interp_factor) * model_alphaf + interp_factor * alphaf;
 			model_xf = (1 - interp_factor) * model_xf + interp_factor * xf;
         end
-        frameCounter = frameCounter + 1;
 
+        %Transfer the results to global array
+        time = toc();
+        results(frameCounter,:) = [target.x target.y frame time];
+        frameCounter = frameCounter + 1;
+		% save position and timing
+        
         figure(1);
         imshow(hsi_roi(:,:,1),[]);
         % hold on
         % plot(target.y,target.x,'go','Linewidth',3);
-		% save position and timing
-		toc();
 		
-	end
+    end
+    
+    %Compute Precision
+    pr_curve = precision_curve(target,results);
 
 end
 
