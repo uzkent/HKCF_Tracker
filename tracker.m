@@ -1,9 +1,10 @@
 function [pr_curve] = tracker(base_path, target, target_sz, ...
 	padding, kernel, lambda, output_sigma_factor, interp_factor, cell_size, ...
-	features)
-%TRACKER Kernelized/Dual Correlation Filter (KCF/DCF) tracking.
+	features,cnn_model)
+%Deep Hyperspectral Kernelized/Dual Correlation Filter (DeepHKCF) tracking.
 %   This function implements the pipeline for tracking with the KCF (by
-%   choosing a non-linear kernel) and DCF (by choosing a linear kernel).
+%   choosing a non-linear kernel) and DCF (by choosing a linear kernel) and
+%   uses the CNN features fine-tuned on Aerial Vehicle Detection.
 %
 %   It is meant to be called by the interface function RUN_TRACKER, which
 %   sets up the parameters and loads the video information.
@@ -27,13 +28,15 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
 %      pixels).
 %     FEATURES is a struct describing the used features (see GET_FEATURES).
 %     SHOW_VISUALIZATION will show an interactive video if set to true.
+%     CNN_MODEL is the Deep Convolutional Neural Network model to be used 
+%      to extract features from the Region of Interest
 %
 %   Outputs:
 %    POSITIONS is an Nx2 matrix of target positions over time (in the
 %     format [rows, columns]).
 %    TIME is the tracker execution time, without video loading/rendering.
 %
-%   Joao F. Henriques, 2014
+%   Joao F. Henriques, 2014 - Modified by Burak Uzkent, 2017
 
 %   window size, taking padding into account
 	window_sz = floor(target_sz * (1 + padding));
@@ -46,7 +49,7 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
 	%create regression labels, gaussian shaped, with a bandwidth
 	%proportional to target size
 	output_sigma = sqrt(prod(target_sz)) * output_sigma_factor / cell_size;
-    if isfield(features, 'deep') && features.deep
+    if isfield(features, 'deep_HSI') && features.deep_HSI
         yf = fft2(gaussian_shaped_labels(output_sigma, ceil(window_sz / cell_size)));
     else
         yf = fft2(gaussian_shaped_labels(output_sigma, floor(window_sz / cell_size)));
@@ -59,14 +62,17 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
 
 	time = 0;  %to calculate FPS
     
-    frameCounter = 1;
-	for frame = target.firstFrame:target.lastFrame,
+    frameCounter = 1; %Frame Index
+	%vObj = VideoWriter('/Users/buzkent/Desktop/video.avi');
+    %vObj.FrameRate = 1;
+    %open(vObj);
+    for frame = target.firstFrame:target.lastFrame,
 		%load HSI Image - Handle - For now keep reading the same imagOOooe
         imgHandle = matfile([base_path 'Image_' num2str(frame) '.mat']);
         
         %Load GrayScale Imagery for Display Purposes
-        % grayImage = imgHandle.img(:,:,1);
-        
+        % grayImage{frame} = imgHandle.img(:,:,15);
+
 		tic();
         if frameCounter > 1
             
@@ -74,10 +80,16 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
             applyHomograpy(target,frameCounter-1);
             
             %Sample The ROI From the Full Image
-            xCoord = min(max(1,target.x-(window_sz(1)/2)*2),1500):min(max(1,target.x+(window_sz(1)/2)*2),1500);
-            yCoord = min(max(1,target.y-(window_sz(2)/2)*2),1500):min(max(1,target.y+(window_sz(2)/2)*2),1500);
+            xCoord = target.x-(window_sz(1)/2)*3:target.x+(window_sz(1)/2)*3;
+            yCoord = target.y-(window_sz(2)/2)*3:target.y+(window_sz(2)/2)*3;
+            %Handle Boundaries
+            xCoord = boundary_handling(xCoord);
+            yCoord = boundary_handling(yCoord);
+            %Sample
+            hsi_roi = imgHandle.img(xCoord,yCoord,:);
             hsi_roi = imgHandle.img(xCoord,yCoord,:);
             
+            %Sample SubWindows
             SubWindowsX = round(linspace(1,size(xCoord,2)-window_sz(1),5));
             SubWindowsY = round(linspace(1,size(yCoord,2)-window_sz(2),5));
             for i = 1:5
@@ -91,7 +103,7 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
                     roi = hsi_roi(xSubWindow,ySubWindow,:);
                     
                     %frame, and convert to Fourier domain (its size is unchanged)
-                    zf = fft2(get_features(roi, features, cell_size, cos_window));
+                    zf = fft2(get_features(roi, features, cell_size, cos_window, cnn_model));
 
                     %calculate response of the classifier at all shifts
                     switch kernel.type
@@ -113,7 +125,6 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
                     
                     %Store Subwindows for Debugging
                     dROI{i,j} = roi(:,:,1);
-             
                 end
             end
                 %Shift the tracker to new position
@@ -127,16 +138,16 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
                     horiz_delta = horiz_delta - size(zf,2);
                 end
                 target.x = SubWindowX{iX,iY} + cell_size * [vert_delta - 1];
-                target.y = SubWindowY{iX,iY} + cell_size * [horiz_delta - 1];
-           
+                target.y = SubWindowY{iX,iY} + cell_size * [horiz_delta - 1];  
         end
         
         %obtain a subwindow for training at newly estimated target position
-        % Sample The ROI From the Full Image
+        %Sample The ROI From the Full Image
         xCoord = min(max(1,target.x-(window_sz(1)/2)),1500):min(max(1,target.x+(window_sz(1)/2)),1500)-1;
         yCoord = min(max(1,target.y-(window_sz(2)/2)),1500):min(max(1,target.y+(window_sz(2)/2)),1500)-1;
         hsi_roi = imgHandle.img(xCoord,yCoord,:);
-        xf = fft2(get_features(hsi_roi, features, cell_size, cos_window));
+        %Extract Features
+        xf = fft2(get_features(hsi_roi, features, cell_size, cos_window, cnn_model));
 
         %Kernel Ridge Regression, calculate alphas (in Fourier domain)
         switch kernel.type
@@ -150,9 +161,9 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
         alphaf = yf ./ (kf + lambda);   %equation for fast training
    
 		if frameCounter == 1,  %first frame, train with a single image
-			model_alphaf = alphaf;
-			model_xf = xf;
-		else
+			model_alphaf = alphaf; %Initiate the Model
+			model_xf = xf;         %Initiate the Model
+        else
 			%subsequent frames, interpolate model
 			model_alphaf = (1 - interp_factor) * model_alphaf + interp_factor * alphaf;
 			model_xf = (1 - interp_factor) * model_xf + interp_factor * xf;
@@ -162,14 +173,20 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
         time = toc();
         results(frameCounter,:) = [target.x target.y frame time];
         frameCounter = frameCounter + 1;
-		% save position and timing
+		%save position and timing
         
+        %Display the Results
         figure(1);
-        imshow(hsi_roi(:,:,1),[]);
-        % hold on
-        % plot(target.y,target.x,'go','Linewidth',3);
-		
+        %subplot(1,2,1);
+        %imshow(grayImage,[]);
+        %hold on
+        %plot(target.y,target.x,'go','Linewidth',2);
+        %subplot(1,2,2);
+        imshow(hsi_roi(:,:,15),[]);
+        %f = getframe;
+        %writeVideo(vObj,f);
     end
+    %close(vObj);
     
     %Compute Precision
     pr_curve = precision_curve(target,results);

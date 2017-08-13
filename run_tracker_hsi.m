@@ -1,8 +1,7 @@
 %
-%  High-Speed Tracking with Kernelized Correlation Filters
+%  Deep Hyperspectral Kernelized Correlation Filter Tracking
 %
-%  Joao F. Henriques, 2014
-%  http://www.isr.uc.pt/~henriques/
+%  Burak Uzkent, 2017
 %
 %  Main interface for Kernelized/Dual Correlation Filters (KCF/DCF).
 %  This function takes care of setting up parameters, loading video
@@ -23,7 +22,7 @@
 %    Choose a KERNEL. 'gaussian'/'polynomial' to run KCF, 'linear' for DCF.
 %
 %  RUN_TRACKER VIDEO KERNEL FEATURE
-%    Choose a FEATURE type, either 'hog' or 'gray' (raw pixels).
+%    Choose a FEATURE type, 'hog', 'gray' (raw pixels) or 'deep'.
 %
 %  RUN_TRACKER(VIDEO, KERNEL, FEATURE, SHOW_VISUALIZATION, SHOW_PLOTS)
 %    Decide whether to show the scrollable figure, and the precision plot.
@@ -39,9 +38,9 @@
 function run_tracker_hsi(kernel_type, feature_type) %Run it for all the targets
 
 	%path to the videos (you'll be able to choose one with the GUI).
-    base_path = '/Volumes/Seagate Backup Plus Drive/Moving_Platform_HSI/';
-
-	%default settings
+    base_path = '/Volumes/Burak_HardDrive/Moving_Platform_HSI/';
+    
+    %default settings
 	if nargin < 1, kernel_type = 'gaussian'; end
 	if nargin < 2, feature_type = 'hsi'; end
 
@@ -49,11 +48,15 @@ function run_tracker_hsi(kernel_type, feature_type) %Run it for all the targets
 	%parameters based on the chosen kernel or feature type
 	kernel.type = kernel_type;
 	
-	features.gray = false;
-	features.hog = false;
-	
+	features.gray = false; %Initiate Feature Types
+	features.hog = false;  % HoG
+    features.deep_BN = false; % Binary Classifier - FineTuned AlexNet
+	features.deep_HSI = false; % HSI Clasifier - FineTuned AlexNet
+    features.deep_RGB = false; % Pre-Trained AlexNet
+    features.hsi = false; % Raw HSI and HoG Features
+    
 	padding = 2.0;  %extra area surrounding the target
-
+    cnnModel = [];
 	lambda = 1e-4;  %regularization
 	output_sigma_factor = 0.10;  %spatial bandwidth (proportional to target)
 	
@@ -70,38 +73,78 @@ function run_tracker_hsi(kernel_type, feature_type) %Run it for all the targets
         cell_size = 1;
 
    case 'hsi'  % Proposed Tracker Features
-        interp_factor = 0.03;
-        kernel.sigma = 0.6;
+        interp_factor = 0.03; %Learning Rate
+        kernel.sigma = 0.6; %Gaussian Bandwith
 
-        kernel.poly_a = 1;
-        kernel.poly_b = 9;
+        kernel.poly_a = 1; %Polynomial Kernel
+        kernel.poly_b = 9; %Polynomial Kernel
 
-        features.hsi = true;
+        features.hsi = true; %HSI Features
         cell_size = 1;
+        
+   case 'deep_HSI'  % Proposed Tracker Features
+        interp_factor = 0.03; %Learning Rate
+        kernel.sigma = 0.6; %Gaussian Kernel Bandwith
 
+        kernel.poly_a = 1; %Polynomial Kernel
+        kernel.poly_b = 9; %Polynomial Kernel
+        features.deep_HSI = true; %Deep HSI Features
+        cell_size = 1;
+        %Deep CNN Model - AlexNet, GoogleNet Finetuned on Aerial Data Binary
+        %Classification or Material Classification Network
+        model = '/Volumes/Burak_HardDrive/Moving_Platform_CNN_Training/Caffe_Files_HSI/deploy.prototxt';
+        weights = '/Volumes/Burak_HardDrive/Moving_Platform_CNN_Training/Caffe_Files_HSI/vd_net_iter_1000.caffemodel';
+        cnnModel = caffe.Net(model, weights, 'test'); % create net and load weights
+
+   case 'deep_BN'  % Proposed Tracker Features
+        interp_factor = 0.03; %Learning Rate
+        kernel.sigma = 0.6; %Gaussian Kernel Bandwith
+
+        kernel.poly_a = 1; %Polynomial Kernel
+        kernel.poly_b = 9; %Polynomial Kernel
+        features.deep_BN = true; %Deep HSI Features
+        cell_size = 1;
+        %Deep CNN Model - AlexNet, GoogleNet Finetuned on Aerial Data Binary
+        %Classification or Material Classification Network
+        model = '/Volumes/Burak_HardDrive/Moving_Platform_CNN_Training/Caffe_Files/deploy.prototxt';
+        weights = '/Volumes/Burak_HardDrive/Moving_Platform_CNN_Training/Caffe_Files/vd_net_iter_1000.caffemodel';     
+        cnnModel = caffe.Net(model, weights, 'test'); % create net and load weights
+        
+    case 'deep_RGB'  % Proposed Tracker Features
+        interp_factor = 0.03; %Learning Rate
+        kernel.sigma = 0.6; %Gaussian Kernel Bandwith
+
+        kernel.poly_a = 1; %Polynomial Kernel
+        kernel.poly_b = 9; %Polynomial Kernel
+        features.deep_RGB = true; %Deep HSI Features
+        cell_size = 1;
+        %Deep CNN Model - AlexNet
+        %Classification or Material Classification Network
+        model = '/Users/buzkent/Documents/caffe/models/bvlc_reference_caffenet/deploy_Conv2.prototxt';
+        weights = '/Users/buzkent/Documents/caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel';     
+        cnnModel = caffe.Net(model, weights, 'test'); % create net and load weights    
+        
     % We will add more variants of the features from HSI
-
     otherwise
         error('Unknown feature.')
     end
     
 	assert(any(strcmp(kernel_type, {'linear', 'polynomial', 'gaussian'})), 'Unknown kernel.')
 
-    
     % -----------------------------------------------
     % Read the Ground Truth to Get Target Information - Read from Original
     % Text File to get Target Information
-    file = dlmread('/Volumes/Seagate Backup Plus Drive/Moving_Platform_HSI/Ground_Truth/Vehicles_of_Interest.txt');
+    file = dlmread('/Volumes/Burak_HardDrive/Moving_Platform_HSI/Ground_Truth/Vehicles_of_Interest.txt');
     counter = 1;
     for i = 1:size(file,1)
         id = i;
         target.id = file(id,1);
         target.firstFrame = file(id,2)+1;
-        target.lastFrame = file(id,2)+25;
-        target.x = file(id,4);
-        target.y = file(id,5);
-        target.width = file(id,6)*2;
-        target.height = file(id,7)*2;
+        target.lastFrame = file(id,3);
+        target.x = file(id,4); %For W/o Tree Scenario
+        target.y = file(id,5); 
+        target.width = 16; %file(id,6)*2; 
+        target.height = 16; %file(id,7)*2;
         target_sz = [target.width target.height];
         % ----------------------------------------------
 
@@ -114,19 +157,19 @@ function run_tracker_hsi(kernel_type, feature_type) %Run it for all the targets
         try
             pr_curve(counter,:) = tracker(base_path, target, target_sz, ...
                 padding, kernel, lambda, output_sigma_factor, interp_factor, ...
-                cell_size, features);
+                cell_size, features, cnnModel);
+            counter
             counter = counter+1;
-        catch err;
+        catch err
             continue;
         end 
-        
-        %Plot the Figure
-        close all
-        pr = mean(pr_curve,1);
-        plot(pr(1:50),'Linewidth',4);
-        axis([0 50 0 1]);
-        xlabel('Distance');
-        ylabel('Precision');
-        pr(51);
     end
+    %Plot the Figure
+    close all
+    pr = mean(pr_curve,1);
+    plot(pr(1:50),'Linewidth',4);
+    axis([0 50 0 1]);
+    xlabel('Distance');
+    ylabel('Precision');
+    pr(51);
 end
