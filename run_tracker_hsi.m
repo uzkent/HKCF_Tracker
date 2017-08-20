@@ -35,7 +35,7 @@
 %
 
 % function run_tracker_hsi(kernel_type, feature_type,id) %Run it for specific target
-function run_tracker_hsi(kernel_type, feature_type) %Run it for all the targets
+function run_tracker_hsi(kernel_type, feature_type, grayImage) %Run it for all the targets
 
 	%path to the videos (you'll be able to choose one with the GUI).
     base_path = '/Volumes/Burak_HardDrive/Moving_Platform_HSI/';
@@ -137,10 +137,10 @@ function run_tracker_hsi(kernel_type, feature_type) %Run it for all the targets
     file = dlmread('/Volumes/Burak_HardDrive/Moving_Platform_HSI/Ground_Truth/Vehicles_of_Interest.txt');
     counter = 1;
     for i = 1:size(file,1)
-        id = i;
+        id = 20;
         target.id = file(id,1);
         target.firstFrame = file(id,2)+1;
-        target.lastFrame = file(id,3);
+        target.lastFrame = file(id,2)+10;
         target.x = file(id,4); %For W/o Tree Scenario
         target.y = file(id,5); 
         target.width = 16; %file(id,6)*2; 
@@ -157,7 +157,7 @@ function run_tracker_hsi(kernel_type, feature_type) %Run it for all the targets
         try
             pr_curve(counter,:) = tracker(base_path, target, target_sz, ...
                 padding, kernel, lambda, output_sigma_factor, interp_factor, ...
-                cell_size, features, cnnModel);
+                cell_size, features, cnnModel, grayImage);
             counter
             counter = counter+1;
         catch err

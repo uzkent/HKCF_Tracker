@@ -37,8 +37,8 @@ function x = get_features(im, features, cell_size, cos_window, cnn_model)
 		xHoG = double(fhog(single(im) / 255, cell_size, 9));
 		xHoG(:,:,end) = [];  %remove all-zeros channel ("truncation feature")
         % out_pca = reshape(temp_pca, [prod(sz), size(temp_pca, 3)]);
-        %x = cat(3,x,xHoG);
-        x = xHoG;
+        x = cat(3,x,xHoG);
+        %x = xHoG;
         x = double(imresize(x,[size(cos_window,1),size(cos_window,2)],'bilinear'));
     end
     % ----------------------------------------------

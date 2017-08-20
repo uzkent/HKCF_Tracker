@@ -1,7 +1,7 @@
 function [pr_curve] = tracker(base_path, target, target_sz, ...
 	padding, kernel, lambda, output_sigma_factor, interp_factor, cell_size, ...
-	features,cnn_model)
-%Deep Hyperspectral Kernelized/Dual Correlation Filter (DeepHKCF) tracking.
+	features,cnn_model, grayImage)
+%   Deep Hyperspectral Kernelized/Dual Correlation Filter (DeepHKCF) tracking.
 %   This function implements the pipeline for tracking with the KCF (by
 %   choosing a non-linear kernel) and DCF (by choosing a linear kernel) and
 %   uses the CNN features fine-tuned on Aerial Vehicle Detection.
@@ -40,7 +40,7 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
 
 %   window size, taking padding into account
 	window_sz = floor(target_sz * (1 + padding));
-	% window_sz = [100 100]; % For now we use a fixed ROI
+	% window_sz = [50 50]; % For now we use a fixed ROI
     
 % 	we could choose a size that is a power of two, for better FFT
 % 	%performance. in practice it is slower, due to the larger window size.
@@ -66,22 +66,27 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
 	%vObj = VideoWriter('/Users/buzkent/Desktop/video.avi');
     %vObj.FrameRate = 1;
     %open(vObj);
+    
+    %Display the Results
+    figure(1);
     for frame = target.firstFrame:target.lastFrame,
-		%load HSI Image - Handle - For now keep reading the same imagOOooe
+		
+        %load HSI Image - Handle - For now keep reading the same image
         imgHandle = matfile([base_path 'Image_' num2str(frame) '.mat']);
+        %subplot(1,2,1);
+        drawnow;
+        imshow(grayImage{frame},[]);
+        hold on
         
-        %Load GrayScale Imagery for Display Purposes
-        % grayImage{frame} = imgHandle.img(:,:,15);
-
 		tic();
         if frameCounter > 1
             
             %Apply Homograpy to Previous Position
-            applyHomograpy(target,frameCounter-1);
+            applyHomograpy(target, particles, frameCounter-1);
             
             %Sample The ROI From the Full Image
-            xCoord = target.x-(window_sz(1)/2)*3:target.x+(window_sz(1)/2)*3;
-            yCoord = target.y-(window_sz(2)/2)*3:target.y+(window_sz(2)/2)*3;
+            xCoord = target.x-(window_sz(1)/2)*2.0:target.x+(window_sz(1)/2)*2.0;
+            yCoord = target.y-(window_sz(2)/2)*2.0:target.y+(window_sz(2)/2)*2.0;
             %Handle Boundaries
             xCoord = boundary_handling(xCoord);
             yCoord = boundary_handling(yCoord);
@@ -141,6 +146,14 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
                 target.y = SubWindowY{iX,iY} + cell_size * [horiz_delta - 1];  
         end
         
+        %Update the KCF with a PF
+        plot(target.y, target.x, 'gx'); 
+        if frameCounter > 1
+            [target, particles] = bayes_filter(particles, target);
+        else
+            [particles] = initiate_particles(target);
+        end
+
         %obtain a subwindow for training at newly estimated target position
         %Sample The ROI From the Full Image
         xCoord = min(max(1,target.x-(window_sz(1)/2)),1500):min(max(1,target.x+(window_sz(1)/2)),1500)-1;
@@ -175,21 +188,18 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
         frameCounter = frameCounter + 1;
 		%save position and timing
         
-        %Display the Results
-        figure(1);
-        %subplot(1,2,1);
-        %imshow(grayImage,[]);
-        %hold on
         %plot(target.y,target.x,'go','Linewidth',2);
         %subplot(1,2,2);
-        imshow(hsi_roi(:,:,15),[]);
+        %imshow(hsi_roi(:,:,15),[]);
         %f = getframe;
         %writeVideo(vObj,f);
+        
+        %Display the Particles
+        display_particles(particles,'ro');
     end
     %close(vObj);
     
     %Compute Precision
     pr_curve = precision_curve(target,results);
-
 end
 
