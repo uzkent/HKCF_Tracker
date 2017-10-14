@@ -1,6 +1,6 @@
 function [pr_curve] = tracker(base_path, target, target_sz, ...
 	padding, kernel, lambda, output_sigma_factor, interp_factor, cell_size, ...
-	features,cnn_model, grayImage)
+	features,cnn_model)
 %   Deep Hyperspectral Kernelized/Dual Correlation Filter (DeepHKCF) tracking.
 %   This function implements the pipeline for tracking with the KCF (by
 %   choosing a non-linear kernel) and DCF (by choosing a linear kernel) and
@@ -56,7 +56,7 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
     end
 
 	%store pre-computed cosine window - to avoid distortion due to FFT
-	cos_window = hann(size(yf,1)) * hann(size(yf,2))';	
+	cos_window = hann_window(size(yf,1))' * hann_window(size(yf,2));	
 	
 	%note: variables ending with 'f' are in the Fourier domain.
 
@@ -68,15 +68,15 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
     %open(vObj);
     
     %Display the Results
-    figure(1);
+    %figure(1);
     for frame = target.firstFrame:target.lastFrame,
 		
         %load HSI Image - Handle - For now keep reading the same image
         imgHandle = matfile([base_path 'Image_' num2str(frame) '.mat']);
         %subplot(1,2,1);
-        drawnow;
-        imshow(grayImage{frame},[]);
-        hold on
+        %drawnow;
+        %imshow(grayImage{frame},[]);
+        %hold on
         
 		tic();
         if frameCounter > 1
@@ -85,30 +85,50 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
             applyHomograpy(target, particles, frameCounter-1);
             
             %Sample The ROI From the Full Image
-            xCoord = target.x-(window_sz(1)/2)*2.0:target.x+(window_sz(1)/2)*2.0;
-            yCoord = target.y-(window_sz(2)/2)*2.0:target.y+(window_sz(2)/2)*2.0;
+            %xCoord = target.x-(window_sz(1)/2)*3:target.x+(window_sz(1)/2)*3;
+            %yCoord = target.y-(window_sz(2)/2)*3:target.y+(window_sz(2)/2)*3;
+            conv_roi_rows = 64;
+            conv_roi_cols = 64;            
+            xCoord = target.x-conv_roi_rows:target.x+conv_roi_rows-1;
+            yCoord = target.y-conv_roi_cols:target.y+conv_roi_cols-1;            
             %Handle Boundaries
             xCoord = boundary_handling(xCoord);
             yCoord = boundary_handling(yCoord);
             %Sample
             hsi_roi = imgHandle.img(xCoord,yCoord,:);
-            hsi_roi = imgHandle.img(xCoord,yCoord,:);
+            number_fp = 2;
+            SubWindowsX = round(linspace(1,size(xCoord,2)-conv_roi_rows,number_fp));
+            SubWindowsY = round(linspace(1,size(yCoord,2)-conv_roi_cols,number_fp));
+            % Extract Deep Features for the ROI
+            for i = 1:number_fp
+                for j = 1:number_fp
+                    % Sample Corresponding Window
+                    xSubWindow = SubWindowsX(i):SubWindowsX(i)+conv_roi_rows-1;
+                    ySubWindow = SubWindowsY(j):SubWindowsY(j)+conv_roi_cols-1;
+                    roi = hsi_roi(xSubWindow,ySubWindow,:);
+                    x_window = (window_sz(1) * (i-1)) +1 : window_sz(1) * i;
+                    y_window = (window_sz(2) * (j-1)) +1 : window_sz(2) * j;
+                    roi_deep_features(x_window,y_window,:) = ...
+                        get_features(roi, features, cell_size, cos_window, cnn_model);
+                end
+            end
             
             %Sample SubWindows
-            SubWindowsX = round(linspace(1,size(xCoord,2)-window_sz(1),5));
-            SubWindowsY = round(linspace(1,size(yCoord,2)-window_sz(2),5));
-            for i = 1:5
-                for j = 1:5
+            number_rois = 6;
+            SubWindowsX = round(linspace(1,size(xCoord,2)-window_sz(1),number_rois));
+            SubWindowsY = round(linspace(1,size(yCoord,2)-window_sz(2),number_rois));
+            mapWindowsX = round(linspace(1,size(roi_deep_features,1)-window_sz(1),number_rois));
+            mapWindowsY = round(linspace(1,size(roi_deep_features,2)-window_sz(2),number_rois));
+            for i = 1:number_rois % Search Through ROIs
+                for j = 1:number_rois  % Search Through ROIs
             
                     %obtain a subwindow for detection at the position from last
-                    xSubWindow = SubWindowsX(i):SubWindowsX(i)+window_sz(1)-1;
-                    ySubWindow = SubWindowsY(j):SubWindowsY(j)+window_sz(2)-1;
-                    SubWindowX{i,j} = xCoord(1) + xSubWindow(end/2); 
-                    SubWindowY{i,j} = yCoord(1) + ySubWindow(end/2); 
-                    roi = hsi_roi(xSubWindow,ySubWindow,:);
-                    
+                    xSubWindow = mapWindowsX(i) : mapWindowsX(i) + window_sz(1) - 1;
+                    ySubWindow = mapWindowsY(j) : mapWindowsX(j) + window_sz(2) - 1;
+                    SubWindowX{i,j} = xCoord(1) + SubWindowsX(i) + window_sz(1)/2; 
+                    SubWindowY{i,j} = yCoord(1) + SubWindowsY(j) + window_sz(2)/2; 
                     %frame, and convert to Fourier domain (its size is unchanged)
-                    zf = fft2(get_features(roi, features, cell_size, cos_window, cnn_model));
+                    zf = fft2(roi_deep_features(xSubWindow,ySubWindow,:));
 
                     %calculate response of the classifier at all shifts
                     switch kernel.type
@@ -147,9 +167,9 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
         end
         
         %Update the KCF with a PF
-        plot(target.y, target.x, 'gx'); 
+        % plot(target.y, target.x, 'gx'); 
         if frameCounter > 1
-            [target, particles] = bayes_filter(particles, target);
+            %[target, particles] = bayes_filter(particles, target);
         else
             [particles] = initiate_particles(target);
         end
@@ -195,7 +215,7 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
         %writeVideo(vObj,f);
         
         %Display the Particles
-        display_particles(particles,'ro');
+        %display_particles(particles,'ro');
     end
     %close(vObj);
     
