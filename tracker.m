@@ -84,51 +84,39 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
             %Apply Homograpy to Previous Position
             applyHomograpy(target, particles, frameCounter-1);
             
-            %Sample The ROI From the Full Image
-            %xCoord = target.x-(window_sz(1)/2)*3:target.x+(window_sz(1)/2)*3;
-            %yCoord = target.y-(window_sz(2)/2)*3:target.y+(window_sz(2)/2)*3;
-            conv_roi_rows = 64;
-            conv_roi_cols = 64;            
-            xCoord = target.x-conv_roi_rows:target.x+conv_roi_rows-1;
-            yCoord = target.y-conv_roi_cols:target.y+conv_roi_cols-1;            
-            %Handle Boundaries
+            %Sample The ROI From the Full Image      
+            xCoord = target.x-(window_sz(1)/3)*3:target.x+(window_sz(1)/3)*3-1;
+            yCoord = target.y-(window_sz(2)/3)*3:target.y+(window_sz(2)/3)*3-1;
             xCoord = boundary_handling(xCoord);
             yCoord = boundary_handling(yCoord);
-            %Sample
-            hsi_roi = imgHandle.img(xCoord,yCoord,:);
-            number_fp = 2;
-            SubWindowsX = round(linspace(1,size(xCoord,2)-conv_roi_rows,number_fp));
-            SubWindowsY = round(linspace(1,size(yCoord,2)-conv_roi_cols,number_fp));
-            % Extract Deep Features for the ROI
-            for i = 1:number_fp
-                for j = 1:number_fp
-                    % Sample Corresponding Window
-                    xSubWindow = SubWindowsX(i):SubWindowsX(i)+conv_roi_rows-1;
-                    ySubWindow = SubWindowsY(j):SubWindowsY(j)+conv_roi_cols-1;
-                    roi = hsi_roi(xSubWindow,ySubWindow,:);
-                    x_window = (window_sz(1) * (i-1)) +1 : window_sz(1) * i;
-                    y_window = (window_sz(2) * (j-1)) +1 : window_sz(2) * j;
-                    roi_deep_features(x_window,y_window,:) = ...
-                        get_features(roi, features, cell_size, cos_window, cnn_model);
-                end
-            end
+            hsi_roi = imgHandle.img(xCoord,yCoord,:);     
+
+            % Extract Deep Features
+            roi_deep_features = conv_features(hsi_roi, features, cell_size, cos_window, cnn_model);
             
             %Sample SubWindows
-            number_rois = 6;
+            number_rois = 5;
             SubWindowsX = round(linspace(1,size(xCoord,2)-window_sz(1),number_rois));
             SubWindowsY = round(linspace(1,size(yCoord,2)-window_sz(2),number_rois));
-            mapWindowsX = round(linspace(1,size(roi_deep_features,1)-window_sz(1),number_rois));
-            mapWindowsY = round(linspace(1,size(roi_deep_features,2)-window_sz(2),number_rois));
             for i = 1:number_rois % Search Through ROIs
-                for j = 1:number_rois  % Search Through ROIs
-            
+                for j = 1:number_rois
+                    
+                    %ROI Mapping
+                    x_in = ceil(SubWindowsX(i) * size(roi_deep_features,1) / size(hsi_roi,1));
+                    y_in = ceil(SubWindowsY(j) * size(roi_deep_features,1) / size(hsi_roi,2));
+                    x_end = ceil((SubWindowsX(i)+window_sz(1)) * size(roi_deep_features,1) / size(hsi_roi,1));
+                    y_end = ceil((SubWindowsY(j)+window_sz(2)) * size(roi_deep_features,2) / size(hsi_roi,2));
+                    features_roi = im_resize(roi_deep_features(x_in:x_end,y_in:y_end,:),[window_sz(1) window_sz(2)]);
+                    
+                    % Apply Hanning Window
+            		features_roi = bsxfun(@times, features_roi, cos_window);
+                    
                     %obtain a subwindow for detection at the position from last
-                    xSubWindow = mapWindowsX(i) : mapWindowsX(i) + window_sz(1) - 1;
-                    ySubWindow = mapWindowsY(j) : mapWindowsX(j) + window_sz(2) - 1;
                     SubWindowX{i,j} = xCoord(1) + SubWindowsX(i) + window_sz(1)/2; 
-                    SubWindowY{i,j} = yCoord(1) + SubWindowsY(j) + window_sz(2)/2; 
+                    SubWindowY{i,j} = yCoord(1) + SubWindowsY(j) + window_sz(2)/2;
+                    
                     %frame, and convert to Fourier domain (its size is unchanged)
-                    zf = fft2(roi_deep_features(xSubWindow,ySubWindow,:));
+                    zf = fft2(features_roi);
 
                     %calculate response of the classifier at all shifts
                     switch kernel.type
@@ -149,7 +137,7 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
                     confidence(i,j) = max(max(response)); %Confidence of Tracker
                     
                     %Store Subwindows for Debugging
-                    dROI{i,j} = roi(:,:,1);
+                    dROI{i,j} = features_roi;
                 end
             end
                 %Shift the tracker to new position
@@ -176,11 +164,20 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
 
         %obtain a subwindow for training at newly estimated target position
         %Sample The ROI From the Full Image
-        xCoord = min(max(1,target.x-(window_sz(1)/2)),1500):min(max(1,target.x+(window_sz(1)/2)),1500)-1;
-        yCoord = min(max(1,target.y-(window_sz(2)/2)),1500):min(max(1,target.y+(window_sz(2)/2)),1500)-1;
+        xCoord = target.x-(window_sz(1)/3)*3:target.x+(window_sz(1)/3)*3-1;
+        yCoord = target.y-(window_sz(2)/3)*3:target.y+(window_sz(2)/3)*3-1;
+        xCoord = boundary_handling(xCoord);
+        yCoord = boundary_handling(yCoord);
         hsi_roi = imgHandle.img(xCoord,yCoord,:);
-        %Extract Features
-        xf = fft2(get_features(hsi_roi, features, cell_size, cos_window, cnn_model));
+        
+        %Extract Features and Do ROI Mapping
+        roi_deep_features = conv_features(hsi_roi, features, cell_size, cos_window, cnn_model);
+        features_roi = im_resize(roi_deep_features(13:40,13:40,:),[window_sz(1) window_sz(2)]);
+
+        % Apply Hanning Window
+        features_roi = bsxfun(@times, features_roi, cos_window);   
+        
+        xf = fft2(features_roi);
 
         %Kernel Ridge Regression, calculate alphas (in Fourier domain)
         switch kernel.type
