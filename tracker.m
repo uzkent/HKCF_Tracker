@@ -63,16 +63,17 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
 		
         %load HSI Image - Handle - For now keep reading the same image
         imgHandle = matfile([base_path 'Image_' num2str(frame) '.mat']);
-        
-		tic();
+        roi_mp = 4.0;        
+		
+        tic();
         if frameCounter > 1
             
             %Apply Homograpy to Previous Position
-            applyHomograpy(target, particles, frameCounter-1);
+            applyHomograpy(target, frameCounter-1);
             
             %Sample The ROI From the Full Image
-            xCoord = target.x-(window_sz(1)/2)*2.0:target.x+(window_sz(1)/2)*2.0-1;
-            yCoord = target.y-(window_sz(2)/2)*2.0:target.y+(window_sz(2)/2)*2.0-1;
+            xCoord = target.x-(window_sz(1)/2)*roi_mp:target.x+(window_sz(1)/2)*roi_mp-1;
+            yCoord = target.y-(window_sz(2)/2)*roi_mp:target.y+(window_sz(2)/2)*roi_mp-1;
             %Handle Boundaries
             xCoord = boundary_handling(xCoord);
             yCoord = boundary_handling(yCoord);
@@ -80,10 +81,11 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
             hsi_roi = imgHandle.img(xCoord,yCoord,:);
             
             %Sample SubWindows
-            SubWindowsX = round(linspace(1,size(xCoord,2)-window_sz(1),4));
-            SubWindowsY = round(linspace(1,size(yCoord,2)-window_sz(2),4));
-            for i = 1:4
-                for j = 1:4
+            number_rois = 8;
+            SubWindowsX = round(linspace(1,size(xCoord,2)-window_sz(1),number_rois));
+            SubWindowsY = round(linspace(1,size(yCoord,2)-window_sz(2),number_rois));
+            for i = 1:number_rois
+                for j = 1:number_rois
             
                     %obtain a subwindow for detection at the position from last
                     xSubWindow = SubWindowsX(i):SubWindowsX(i)+window_sz(1)-1;
@@ -112,6 +114,7 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
                     %discussed in the paper). the responses wrap around cyclically.
                     [vert(i,j), horiz(i,j)] = find(response == max(response(:)), 1);
                     confidence(i,j) = max(max(response)); %Confidence of Tracker
+                    dROI{i,j} = roi;
 
                 end
             end
@@ -138,8 +141,8 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
 
         %obtain a subwindow for training at newly estimated target position
         %Sample The ROI From the Full Image
-        xCoord = target.x-(window_sz(1)/2)*1.0:target.x+(window_sz(1)/2)*1.0-1;
-        yCoord = target.y-(window_sz(2)/2)*1.0:target.y+(window_sz(2)/2)*1.0-1;
+        xCoord = target.x-(window_sz(1)/2)*roi_mp:target.x+(window_sz(1)/2)*roi_mp-1;
+        yCoord = target.y-(window_sz(2)/2)*roi_mp:target.y+(window_sz(2)/2)*roi_mp-1;        
         %Handle Boundaries
         xCoord = boundary_handling(xCoord);
         yCoord = boundary_handling(yCoord);
