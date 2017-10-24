@@ -28,28 +28,7 @@ S = E.*factor;  % Irradiance to Voltage Conversion
 Vsat = 10^4;    % Maximum signal level
 
 %% ADD READ, SHOT NOISE AND ESTIMATE FINAL VOLTAGE
-Nro = normrnd(0,30,[rows cols bands])*V_e;
-Nphi = normrnd(0,sqrt(abs(S)),[rows cols bands]);
+Nro = 0 + 30.*randn([rows cols bands]) * V_e;
+Nphi = 0 + sqrt(abs(S)).*randn([rows cols bands]);
 Sfn = ((2^b.*(max(min(S+Nphi+Nro,Vsat),0))./(Vsat))+0.5).*2^-b; 
 data_Sfinal = Sfn; 
-
-%% Estimate Peak SNR and Spectra Quality for Hyperspectral Image
-% Normalize the Original Image
-% for i = 1:bands
-     % Actual Data
-%     Signal_Pan=data(:,:,i);
-%     Signal_Pan=2^b*Signal_Pan/max(max(Signal_Pan));  
- 
-     % Normalize the Noise Added Image
-%     SignalNoise_Pan=data_Sfinal(:,:,i);
-%     SignalNoise_Pan=2^b*SignalNoise_Pan/max(max(SignalNoise_Pan)); 
-%     den=sum(sum((Signal_Pan-SignalNoise_Pan).^2))/(rows*cols);
-%     num=(2^b)^2;
- 
-     % Estimate PSNR
-%     PSNR(i) = 10*log10(num/den); 
-%end
-%fid = fopen(['Noise_Level' '_' num2str(ml) '.txt'],'a');
-%psnr = mean(PSNR);
-%spn = evalspec(data_Sfinal,data);
-%fprintf(fid,'%d %d\n',psnr,spn);

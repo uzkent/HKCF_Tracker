@@ -30,16 +30,16 @@ function x = get_features(im, features, cell_size, cos_window, cnn_model)
 		%HSI Features, Convert to Reflectance and Add Noise
         im = NoiseAdd(im,0.1*randi([6 9])); %Flatten Spatially
         % Subtract from the Mean for Better Discrimination
-        x = im - mean(mean(im));
+        %x = im - mean(mean(im));
         %HOG features, from Piotr's Toolbox
-        im = sum(im(:,:,1:30),3);
-        % im = im(:,:,15);
+        % im = sum(im(:,:,1:30),3);
+        im = im(:,:,15);
 		xHoG = double(fhog(single(im) / 255, cell_size, 9));
 		xHoG(:,:,end) = [];  %remove all-zeros channel ("truncation feature")
         % out_pca = reshape(temp_pca, [prod(sz), size(temp_pca, 3)]);
-        x = cat(3,x,xHoG);
-        %x = xHoG;
-        x = double(imresize(x,[size(cos_window,1),size(cos_window,2)],'bilinear'));
+        %x = cat(3,x,xHoG);
+        x = xHoG;
+        x = double(im_resize(x,[size(cos_window,1),size(cos_window,2)]));
     end
     % ----------------------------------------------
     if features.deep_BN, %Proposed Deep HKCF Tracker
@@ -53,7 +53,7 @@ function x = get_features(im, features, cell_size, cos_window, cnn_model)
         res = cnn_model.forward({im}); %ForwardPass the Input Image
         x = permute(res{1},[2 1 3]);
         x = x / 1e3;
-        x = double(imresize(x,[size(cos_window,1),size(cos_window,2)],'bilinear'));
+        x = double(im_resize(x,[size(cos_window,1),size(cos_window,2)],'bilinear'));
     end
     if features.deep_HSI
         %% Pretrained  AlexNet FineTuned on Vehicle-Material Detection on DIRSIG Dataset
@@ -72,7 +72,7 @@ function x = get_features(im, features, cell_size, cos_window, cnn_model)
         %x = cnn_model.blobs('conv1').get_data(); %First Layer Conv Features
         x = permute(res{1},[2 1 3]);
         x = x / 1e3;
-        x = double(imresize(x,[size(cos_window,1),size(cos_window,2)],'bilinear'));
+        x = double(im_resize(x,[size(cos_window,1),size(cos_window,2)],'bilinear'));
     end
     if features.deep_RGB
         %% Pre-Trained AlexNet - No Finetuning
@@ -87,7 +87,7 @@ function x = get_features(im, features, cell_size, cos_window, cnn_model)
         %x = cnn_model.blobs('conv1').get_data(); %First Layer Conv Features
         x = permute(res{1},[2 1 3]);
         x = x / 1e3;
-        x = double(imresize(x,[size(cos_window,1),size(cos_window,2)],'bilinear'));
+        x = double(im_resize(x,[size(cos_window,1),size(cos_window,2)]));
         %------------------------------------------------------------------
     end
     %process with cosine window if needed   

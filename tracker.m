@@ -79,7 +79,7 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
             roi_deep_features = conv_features(hsi_roi, features, cell_size, cos_window, cnn_model);
             
             %Sample SubWindows
-            number_rois = 4;
+            number_rois = 5;
             SubWindowsX = round(linspace(1,size(xCoord,2)-window_sz(1),number_rois));
             SubWindowsY = round(linspace(1,size(yCoord,2)-window_sz(2),number_rois));
             for i = 1:number_rois % Search Through ROIs

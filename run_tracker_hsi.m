@@ -38,7 +38,7 @@
 function run_tracker_hsi(kernel_type, feature_type, grayImage) %Run it for all the targets
 
 	%path to the videos (you'll be able to choose one with the GUI).
-    base_path = '/Volumes/Burak_HardDrive/Moving_Platform_HSI/';
+    base_path = '/Volumes/Burak_HardDrive/Moving_Platform_HSI_NoTrees_2/';
     
     %default settings
 	if nargin < 1, kernel_type = 'gaussian'; end
@@ -120,8 +120,10 @@ function run_tracker_hsi(kernel_type, feature_type, grayImage) %Run it for all t
         cell_size = 1;
         %Deep CNN Model - AlexNet
         %Classification or Material Classification Network
-        model = '/Users/buzkent/Documents/caffe/models/bvlc_reference_caffenet/deploy_Conv2.prototxt';
-        weights = '/Users/buzkent/Documents/caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel';     
+        %model = '/Users/buzkent/Documents/caffe/models/bvlc_reference_caffenet/deploy_Conv2.prototxt';
+        model = '/Volumes/Burak_HardDrive/Moving_Platform_CNN_Training/VGG16/deploy_hsi.prototxt';
+        %weights = '/Users/buzkent/Documents/caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel';     
+        weights = '/Volumes/Burak_HardDrive/Moving_Platform_CNN_Training/VGG16/VGG_ILSVRC_16_layers.caffemodel';     
         cnnModel = caffe.Net(model, weights, 'test'); % create net and load weights    
         
     % We will add more variants of the features from HSI
@@ -137,14 +139,14 @@ function run_tracker_hsi(kernel_type, feature_type, grayImage) %Run it for all t
     file = dlmread('/Volumes/Burak_HardDrive/Moving_Platform_HSI/Ground_Truth/Vehicles_of_Interest.txt');
     counter = 1;
     for i = 1:size(file,1)
-        id = 20;
+        id = i;
         target.id = file(id,1);
         target.firstFrame = file(id,2)+1;
-        target.lastFrame = file(id,2)+10;
-        target.x = file(id,4); %For W/o Tree Scenario
+        target.lastFrame = file(id,3);
+        target.x = file(id,4) - 250; % For W/o Tree Scenario
         target.y = file(id,5); 
-        target.width = 16; %file(id,6)*2; 
-        target.height = 16; %file(id,7)*2;
+        target.width = 16;
+        target.height = 16;
         target_sz = [target.width target.height];
         % ----------------------------------------------
 
@@ -157,8 +159,9 @@ function run_tracker_hsi(kernel_type, feature_type, grayImage) %Run it for all t
         try
             pr_curve(counter,:) = tracker(base_path, target, target_sz, ...
                 padding, kernel, lambda, output_sigma_factor, interp_factor, ...
-                cell_size, features, cnnModel, grayImage);
+                cell_size, features, cnnModel);
             counter
+            pr_curve(counter,:)
             counter = counter+1;
         catch err
             continue;
