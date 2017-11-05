@@ -57,16 +57,17 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
     
     frameCounter = 1; %Frame Index
 
-    for frame = target.firstFrame:target.lastFrame,
+    for frame = target.firstFrame:target.lastFrame
 		
         %load HSI Image - Handle - For now keep reading the same image
+        flag_tr_sp = 0;        
         imgHandle = matfile([base_path 'Image_' num2str(frame) '.mat']);
         
 		tic();
         if frameCounter > 1
             
             %Apply Homograpy to Previous Position
-            applyHomograpy(target, frameCounter-1);
+            applyHomograpy(target, 1);
             
             %Sample The ROI From the Full Image      
             xCoord = target.x-(window_sz(1)/3)*3:target.x+(window_sz(1)/3)*3-1;
@@ -118,59 +119,53 @@ function [pr_curve] = tracker(base_path, target, target_sz, ...
                     %will appear at the top-left corner, not at the center (this is
                     %discussed in the paper). the responses wrap around cyclically.
                     [vert(i,j), horiz(i,j)] = find(response == max(response(:)), 1);
-                    % confidence(i,j) = max(max(response)); %Confidence of Tracker
-                    confidence(i,j) = psr_est(response);
+                    confidence(i,j) = max(max(response)); %Confidence of Tracker
                     
                 end
             end
             %Shift the tracker to new position
-            flag = 0;
-            conf_thresh = 0.30;
-            target.sx = zeros(number_rois,number_rois);
-            target.sy = target.sx;
-            [ind_x,ind_y] = find(confidence>conf_thresh);
-            [indexes] = sub2ind(size(confidence),ind_x,ind_y);
-            %Normalize the confidences
-            confidence_weights = confidence;
-            confidence_weights(indexes) = confidence(indexes)...
-                / sum(confidence(indexes));                
-            for iX = 1:size(vert,1)
-                for iY = 1:size(vert,1)                    
-                    vert_delta = vert(iX,iY);
-                    horiz_delta = horiz(iX,iY);
-                    %wrap around to negative half-space of vertical axis
-                    if vert_delta > size(zf,1) / 2,
-                        vert_delta = vert_delta - size(zf,1);
-                    end
-                    if horiz_delta > size(zf,2) / 2,  %same for horizontal axis
-                        horiz_delta = horiz_delta - size(zf,2);
-                    end
-                    % Check the confidence
-                    if confidence(iX,iY) > conf_thresh
-                        target.sx(iX,iY) = SubWindowX{iX,iY} + cell_size * [vert_delta - 1];
-                        target.sy(iX,iY) = SubWindowY{iX,iY} + cell_size * [horiz_delta - 1];
-                        flag = 1;
-                    end
-                end
+            [iX,iY] = find(confidence == max(max(confidence)),1);
+            vert_delta = vert(iX,iY);
+            horiz_delta = horiz(iX,iY);
+            if vert_delta > size(zf,1) / 2,  %wrap around to negative half-space of vertical axis
+                vert_delta = vert_delta - size(zf,1);
             end
-            % Update the translations
-            if flag == 1
-                target.x = round(sum(sum(target.sx .* confidence_weights)));
-                target.y = round(sum(sum(target.sy .* confidence_weights))); 
+            if horiz_delta > size(zf,2) / 2,  %same for horizontal axis
+                horiz_delta = horiz_delta - size(zf,2);
             end
+            target.x = SubWindowX{iX,iY} + cell_size * [vert_delta - 1];
+            target.y = SubWindowY{iX,iY} + cell_size * [horiz_delta - 1];  
         end
-        
+        if frameCounter > 1
+           xCoord_tr = target.x-(window_sz(1)/2.0)*1:target.x+(window_sz(1)/2)*1-1;
+           yCoord_tr = target.y-(window_sz(2)/2.0)*1:target.y+(window_sz(2)/2)*1-1;
+           xCoord_tr = boundary_handling(xCoord_tr);
+           yCoord_tr = boundary_handling(yCoord_tr);            
+           xc_lg = all(ismember(xCoord_tr, xCoord));
+           yc_lg = all(ismember(yCoord_tr, yCoord));
+           if xc_lg == true && yc_lg == true
+               %ROI Mapping
+               x_in = ceil((xCoord_tr(1) - xCoord(1)) * size(roi_deep_features,1) / size(hsi_roi,1));
+               y_in = ceil((yCoord_tr(1) - yCoord(1)) * size(roi_deep_features,1) / size(hsi_roi,2));
+               x_end = ceil((xCoord_tr(1) - xCoord(1) + window_sz(1)) * size(roi_deep_features,1) / size(hsi_roi,1));
+               y_end = ceil((yCoord_tr(1) - yCoord(1) + window_sz(2)) * size(roi_deep_features,2) / size(hsi_roi,2));
+               features_roi = im_resize(roi_deep_features(x_in:x_end,y_in:y_end,:),[window_sz(1) window_sz(2)]);
+               flag_tr_sp = 1;
+           end
+        end
         %obtain a subwindow for training at newly estimated target position
         %Sample The ROI From the Full Image
-        xCoord = target.x-(window_sz(1)/3)*3:target.x+(window_sz(1)/3)*3-1;
-        yCoord = target.y-(window_sz(2)/3)*3:target.y+(window_sz(2)/3)*3-1;
-        xCoord = boundary_handling(xCoord);
-        yCoord = boundary_handling(yCoord);
-        hsi_roi = imgHandle.img(xCoord,yCoord,:);
-        
-        %Extract Features and Do ROI Mapping
-        roi_deep_features = conv_features(hsi_roi, features, cell_size, cos_window, cnn_model);
-        features_roi = im_resize(roi_deep_features(14:41,14:41,:),[window_sz(1) window_sz(2)]);
+        if flag_tr_sp == 0
+           xCoord = target.x-(window_sz(1)/3)*3:target.x+(window_sz(1)/3)*3-1;
+           yCoord = target.y-(window_sz(2)/3)*3:target.y+(window_sz(2)/3)*3-1;
+           xCoord = boundary_handling(xCoord);
+           yCoord = boundary_handling(yCoord);
+           hsi_roi = imgHandle.img(xCoord,yCoord,:);
+
+           %Extract Features and Do ROI Mapping
+           roi_deep_features = conv_features(hsi_roi, features, cell_size, cos_window, cnn_model);
+           features_roi = im_resize(roi_deep_features(14:41,14:41,:),[window_sz(1) window_sz(2)]);
+        end
 
         % Apply Hanning Window
         features_roi = bsxfun(@times, features_roi, cos_window);   
