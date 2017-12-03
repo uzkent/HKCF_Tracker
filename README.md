@@ -29,3 +29,15 @@ To download the ground truth for the 89 vehicles
 ```
 wget https://buzkent86.github.io/Datasets/GroundTruth.zip
 ```
+
+If you use our synthetic scenario in your research, please cite our following paper :
+
+	@inproceedings{uzkent2016real,
+  		title={Real-time vehicle tracking in aerial video using hyperspectral features},
+  		author={Uzkent, Burak and Hoffman, Matthew J and Vodacek, Anthony},
+  		booktitle={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition Workshops},
+  		pages={36--44},
+  		year={2016}
+	}
+
+
